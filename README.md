@@ -45,22 +45,27 @@ cp .env.example .env
 # .envファイルを編集して必要な環境変数を設定
 ```
 
-3. Prismaクライアントを生成
+3. Dockerイメージのビルド
 ```bash
-pnpm prisma:generate
+docker compose build
 ```
 
-4. Dockerコンテナの起動
+4. 依存関係のインストール
 ```bash
-docker compose up -d
+docker compose run --rm nest-api pnpm install
 ```
 
 5. データベースマイグレーションの実行
 ```bash
-pnpm prisma:migrate
+docker compose run --rm nest-api pnpm prisma migrate dev --name init
 ```
 
-6. アプリケーションの動作確認
+6. Dockerコンテナの起動
+```bash
+docker compose up -d
+```
+
+7. アプリケーションの動作確認
 ```bash
 curl http://localhost:3000/health
 ```
