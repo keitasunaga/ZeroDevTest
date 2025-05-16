@@ -7,6 +7,27 @@ NestJSとPostgreSQLを使用したZeroDevウォレット管理APIの実装です
 - ウォレットの作成と管理
 - 秘密鍵の安全な暗号化と保存
 - ZeroDevスマートアカウントとの統合
+- ウォレット作成時の自動デプロイ機能
+- Sepoliaテストネット専用設計
+- ERC-20トークンの転送機能（ガス代あり/なし）
+- Swagger UIによるAPI仕様の確認
+
+## ⚠️ 重要な依存関係とバージョン互換性について
+
+このプロジェクトでは以下のパッケージバージョンの組み合わせで動作検証しています：
+
+```json
+{
+  "@zerodev/ecdsa-validator": "5.4.8",
+  "@zerodev/sdk": "5.4.30",
+  "viem": "2.28.0"
+}
+```
+
+**重要な注意点:**
+- **バージョンの互換性**: ZeroDev SDKとviemの間にはバージョン互換性の問題があります。特にviem 2.29.2以降を使用すると型の互換性エラーが発生するため、viem 2.28.0の使用を推奨します。
+- **自動修正しないでください**: npm/pnpmのautofix機能で自動的に最新バージョンに更新しないでください。
+- **バージョン変更時の注意**: これらのパッケージをアップデートする場合は、十分なテストを行い、型の互換性を確認してください。
 
 ## セットアップ手順
 
@@ -46,9 +67,25 @@ curl http://localhost:3000/health
 
 ### 主要なエンドポイント
 
-- `GET /wallet/:userId/:chainId` - ユーザーのウォレット情報を取得
-- `POST /wallet` - 新しいウォレットを作成
+- `GET /wallet/:userId` - ユーザーIDでウォレット情報を取得
 - `GET /wallet/address/:walletAddress` - ウォレットアドレスからウォレット情報を取得
+- `POST /wallet/zerodev` - 新しいZeroDevスマートアカウントを作成してデプロイ
+- `POST /wallet/zerodev/recover` - 既存のZeroDevスマートアカウントを復元
+- `GET /token/balance/:walletId` - ウォレットのトークン残高を取得
+- `GET /token/info` - トークンの情報（名前、シンボル）を取得
+- `POST /token/transfer/with-gas` - 通常のトランザクションでトークンを転送（ガス代が必要）
+- `POST /token/transfer/without-gas` - ZeroDevを使用してトークンを転送（ガス代不要）
+
+### API仕様の確認
+
+Swagger UIを使用してAPI仕様を確認できます：
+- URL: http://localhost:3000/api
+
+Swagger UIでは以下の機能が利用可能です：
+- すべてのエンドポイントの詳細な仕様確認
+- リクエスト/レスポンスのスキーマ確認
+- エンドポイントのテスト実行
+- APIドキュメントのダウンロード
 
 ### Prisma Studio
 
@@ -83,6 +120,81 @@ pnpm run build
 | 変数名 | 説明 | デフォルト値 |
 |--------|------|---------|
 | DATABASE_URL | PostgreSQL接続URI | postgresql://postgres:postgres@postgres:5432/wallet_db?schema=public |
-| ENCRYPTION_KEY | 秘密鍵暗号化用のキー | - |
-| ZERODEV_PROJECT_ID | ZeroDevのプロジェクトID | - |
+| ZERODEV_RPC | ZeroDevのRPCエンドポイント | https://rpc.zerodev.app/api/v2/bundler/[YOUR_PROJECT_ID] |
+| SEPOLIA_RPC_URL | SepoliaテストネットのRPCエンドポイント | - |
+| TOKEN_CONTRACT_ADDRESS | ERC-20トークンのコントラクトアドレス | - |
+
+## ZeroDev設定
+
+このアプリケーションを使用するには、以下の手順でZeroDev環境を設定する必要があります：
+
+1. [ZeroDevのウェブサイト](https://zerodev.app/)でアカウントを作成
+2. 新しいプロジェクトを作成して、プロジェクトIDを取得
+3. 環境変数に以下を設定：
+   - ZERODEV_RPC：zerodevのダッシュボードで取得した値を設定
+   - ENCRYPTION_KEY：32バイト以上の安全な文字列
+
+### 重要な注意点
+
+- **ZERODEV_RPC** 環境変数は必須です。この変数がないとウォレットの作成・復元・デプロイが失敗します。
+- **複数バージョンの混在は避けてください**: node_modulesディレクトリに複数バージョンのviemが混在すると予期しない型エラーが発生する可能性があります。
+- 実際の環境ではdocker-compose.ymlの`ZERODEV_RPC`を正しいRPCエンドポイントに更新してください。
+
+## 注意事項
+
+- **このアプリはSepoliaテストネット専用です**。チェーンIDは11155111に固定されています。
+- 本番環境で使用する前に、適切なセキュリティ対策を行ってください
+
+## トークン転送機能
+
+このAPIは2種類のトークン転送方法を提供しています：
+
+### 1. 通常のトランザクション（ガス代が必要）
+
+```bash
+curl -X POST http://localhost:3000/token/transfer/with-gas \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fromWalletId": "your-wallet-id",
+    "toAddress": "recipient-address",
+    "amount": "1000000000000000000"
+  }'
+```
+
+- 通常のEthereumトランザクションを使用
+- 送信元ウォレットにETHが必要（ガス代用）
+- トランザクションの署名に秘密鍵を使用
+
+### 2. ZeroDevトランザクション（ガス代不要）
+
+```bash
+curl -X POST http://localhost:3000/token/transfer/without-gas \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fromWalletId": "your-wallet-id",
+    "toAddress": "recipient-address",
+    "amount": "1000000000000000000"
+  }'
+```
+
+- ZeroDevのスマートアカウントとペイマスターを使用
+- ユーザーはガス代を支払う必要がない
+- ペイマスターがガス代を負担
+- UserOperationを使用してトランザクションを実行
+
+### トークン情報の取得
+
+```bash
+# 残高確認
+curl http://localhost:3000/token/balance/your-wallet-id
+
+# トークン情報
+curl http://localhost:3000/token/info
+```
+
+### 注意事項
+
+- トークン転送には適切な環境変数（`SEPOLIA_RPC_URL`、`TOKEN_CONTRACT_ADDRESS`）の設定が必要です
+- 通常のトランザクションを使用する場合は、送信元ウォレットに十分なETHが必要です
+- ZeroDevトランザクションを使用する場合は、プロジェクトのペイマスター設定が必要です
 
